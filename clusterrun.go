@@ -302,6 +302,7 @@ type dashEntry struct {
 	timeout    bool
 	elapsed    time.Duration
 	result     string
+	cmdOutput  string
 	cpu        int
 	mem        int
 	disk       int
@@ -452,17 +453,21 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, mon
 				diskCol = fmt.Sprintf("%s%s%s %s%3d%%%s",
 					usageColor(e.disk), usageBar(e.disk, 8), colorReset, usageColor(e.disk), e.disk, colorReset)
 			}
-			output := e.result
-			if len(output) > 40 {
-				output = output[:37] + "..."
-			}
+			firstLine, extraLines, _ := strings.Cut(e.cmdOutput, "\n")
 			fmt.Printf("\r\033[K  %s%-*s%s  %s%s%s  %-9s  %-14s  %-14s  %-14s  %s\n",
 				colorBold+colorCyan, hostWidth, e.name, colorReset,
 				statusColor, statusText, colorReset,
 				timeStr,
 				cpuCol, memCol, diskCol,
-				output,
+				firstLine,
 			)
+			n++
+			if extraLines != "" {
+				for _, line := range strings.Split(extraLines, "\n") {
+					fmt.Printf("\r\033[K    %s\n", line)
+					n++
+				}
+			}
 		} else {
 			result := e.result
 			if len(result) > 40 {
@@ -474,8 +479,8 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, mon
 				timeStr,
 				result,
 			)
+			n++
 		}
-		n++
 	}
 
 	return n
@@ -810,7 +815,7 @@ func main() {
 					entries[idx].hasMetrics = true
 				}
 				if len(lines) > 1 {
-					entries[idx].result = strings.SplitN(strings.TrimSpace(lines[1]), "\n", 2)[0]
+					entries[idx].cmdOutput = strings.TrimRight(lines[1], "\n")
 				}
 			} else {
 				entries[idx].result = strings.SplitN(r.output, "\n", 2)[0]
