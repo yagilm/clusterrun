@@ -308,6 +308,83 @@ type dashEntry struct {
 	hasMetrics bool
 }
 
+func printResults(allResults []Result, zoneDomain string, shortOutput, monitorMode bool, timeoutSec int) {
+	for _, r := range allResults {
+		var statusColor, statusLabel, statusExtra string
+		if r.timedOut {
+			statusColor = colorYellow
+			statusLabel = "TIMEOUT"
+			statusExtra = fmt.Sprintf(" (%ds)", timeoutSec)
+		} else if r.returnCode != 0 {
+			statusColor = colorRed
+			statusLabel = "FAIL"
+			if r.failReason != "" {
+				statusExtra = fmt.Sprintf(" (%s)", r.failReason)
+			}
+		} else {
+			statusColor = colorGreen
+			statusLabel = "OK"
+		}
+
+		displayHost := r.host
+		if zoneDomain != "" {
+			displayHost = strings.TrimSuffix(r.host, "."+zoneDomain)
+		}
+
+		if shortOutput {
+			if r.timedOut || r.returnCode != 0 {
+				out := strings.ReplaceAll(strings.TrimSpace(r.output), "\n", " | ")
+				if out != "" {
+					fmt.Printf("%s%s%s  [%s%s%s%s]: %s\n",
+						colorBold+colorCyan, displayHost, colorReset,
+						statusColor, statusLabel+statusExtra, colorReset, colorReset,
+						out,
+					)
+				} else {
+					fmt.Printf("%s%s%s  [%s%s%s%s]\n",
+						colorBold+colorCyan, displayHost, colorReset,
+						statusColor, statusLabel+statusExtra, colorReset, colorReset,
+					)
+				}
+			} else if monitorMode {
+				if cpu, mem, disk, ok := parseMetrics(r.output); ok {
+					fmt.Printf("%s%s%s: cpu:%s%d%%%s mem:%s%d%%%s disk:%s%d%%%s\n",
+						colorBold+colorCyan, displayHost, colorReset,
+						usageColor(cpu), cpu, colorReset,
+						usageColor(mem), mem, colorReset,
+						usageColor(disk), disk, colorReset,
+					)
+				}
+			} else {
+				fmt.Printf("%s%s%s: %s\n",
+					colorBold+colorCyan, displayHost, colorReset,
+					strings.ReplaceAll(r.output, "\n", " | "),
+				)
+			}
+		} else {
+			fmt.Printf("%s%s%s%s  [%s%s%s%s]\n",
+				colorBold+colorCyan, displayHost, colorReset,
+				colorYellow, statusColor, statusLabel+statusExtra, colorReset, colorReset,
+			)
+			if monitorMode && r.returnCode == 0 && !r.timedOut {
+				if cpu, mem, disk, ok := parseMetrics(r.output); ok {
+					const barW = 15
+					fmt.Printf("  CPU   %s%s%s %s%3d%%%s\n",
+						usageColor(cpu), usageBar(cpu, barW), colorReset, usageColor(cpu), cpu, colorReset)
+					fmt.Printf("  MEM   %s%s%s %s%3d%%%s\n",
+						usageColor(mem), usageBar(mem, barW), colorReset, usageColor(mem), mem, colorReset)
+					fmt.Printf("  DISK  %s%s%s %s%3d%%%s\n",
+						usageColor(disk), usageBar(disk, barW), colorReset, usageColor(disk), disk, colorReset)
+				}
+			} else if r.output != "" {
+				for _, line := range strings.Split(r.output, "\n") {
+					fmt.Printf("  %s\n", line)
+				}
+			}
+		}
+	}
+}
+
 func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, monitorMode bool) int {
 	spinners := []string{"|", "/", "-", "\\"}
 
@@ -719,78 +796,14 @@ func main() {
 		mu.Lock()
 		renderDashboard(entries, hostWidth, tick, linesPrinted, monitorMode)
 		mu.Unlock()
+		printResults(allResults, zoneDomain, shortOutput, monitorMode, timeoutSec)
 	} else {
 		for r := range results {
 			allResults = append(allResults, r)
 			fmt.Fprintf(os.Stderr, "\r[%d/%d]", len(allResults), total)
 		}
 		fmt.Fprint(os.Stderr, "\r        \r")
-
-		for _, r := range allResults {
-			var statusColor, statusLabel, statusExtra string
-			if r.timedOut {
-				statusColor = colorYellow
-				statusLabel = "TIMEOUT"
-				statusExtra = fmt.Sprintf(" (%ds)", timeoutSec)
-			} else if r.returnCode != 0 {
-				statusColor = colorRed
-				statusLabel = "FAIL"
-				if r.failReason != "" {
-					statusExtra = fmt.Sprintf(" (%s)", r.failReason)
-				}
-			} else {
-				statusColor = colorGreen
-				statusLabel = "OK"
-			}
-
-			displayHost := r.host
-			if zoneDomain != "" {
-				displayHost = strings.TrimSuffix(r.host, "."+zoneDomain)
-			}
-
-			if shortOutput {
-				if r.timedOut || r.returnCode != 0 {
-					fmt.Printf("%s%s%s  [%s%s%s%s]\n",
-						colorBold+colorCyan, displayHost, colorReset,
-						statusColor, statusLabel+statusExtra, colorReset, colorReset,
-					)
-				} else if monitorMode {
-					if cpu, mem, disk, ok := parseMetrics(r.output); ok {
-						fmt.Printf("%s%s%s: cpu:%s%d%%%s mem:%s%d%%%s disk:%s%d%%%s\n",
-							colorBold+colorCyan, displayHost, colorReset,
-							usageColor(cpu), cpu, colorReset,
-							usageColor(mem), mem, colorReset,
-							usageColor(disk), disk, colorReset,
-						)
-					}
-				} else {
-					fmt.Printf("%s%s%s: %s\n",
-						colorBold+colorCyan, displayHost, colorReset,
-						strings.ReplaceAll(r.output, "\n", " | "),
-					)
-				}
-			} else {
-				fmt.Printf("%s%s%s%s  [%s%s%s%s]\n",
-					colorBold+colorCyan, displayHost, colorReset,
-					colorYellow, statusColor, statusLabel+statusExtra, colorReset, colorReset,
-				)
-				if monitorMode && r.returnCode == 0 && !r.timedOut {
-					if cpu, mem, disk, ok := parseMetrics(r.output); ok {
-						const barW = 15
-						fmt.Printf("  CPU   %s%s%s %s%3d%%%s\n",
-							usageColor(cpu), usageBar(cpu, barW), colorReset, usageColor(cpu), cpu, colorReset)
-						fmt.Printf("  MEM   %s%s%s %s%3d%%%s\n",
-							usageColor(mem), usageBar(mem, barW), colorReset, usageColor(mem), mem, colorReset)
-						fmt.Printf("  DISK  %s%s%s %s%3d%%%s\n",
-							usageColor(disk), usageBar(disk, barW), colorReset, usageColor(disk), disk, colorReset)
-					}
-				} else if r.output != "" {
-					for _, line := range strings.Split(r.output, "\n") {
-						fmt.Printf("  %s\n", line)
-					}
-				}
-			}
-		}
+		printResults(allResults, zoneDomain, shortOutput, monitorMode, timeoutSec)
 	}
 
 	if downloadVal != "" {
