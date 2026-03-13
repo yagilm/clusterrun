@@ -715,10 +715,10 @@ func main() {
 		for _, host := range hosts {
 			fmt.Printf("  %s\n", host)
 		}
-		fmt.Print("\nProceed? [y/N] ")
+		fmt.Print("\nProceed? [Y/n] ")
 		var answer string
 		fmt.Scanln(&answer)
-		if strings.ToLower(strings.TrimSpace(answer)) != "y" {
+		if a := strings.ToLower(strings.TrimSpace(answer)); a != "" && a != "y" {
 			fmt.Fprintln(os.Stderr, "Aborted.")
 			os.Exit(1)
 		}
