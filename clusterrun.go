@@ -332,33 +332,38 @@ func printResults(allResults []Result, zoneDomain string, shortOutput, monitorMo
 		}
 
 		if shortOutput {
-			if r.timedOut || r.returnCode != 0 {
-				out := strings.ReplaceAll(strings.TrimSpace(r.output), "\n", " | ")
-				if out != "" {
-					fmt.Printf("%s%s%s  [%s%s%s%s]: %s\n",
-						colorBold+colorCyan, displayHost, colorReset,
-						statusColor, statusLabel+statusExtra, colorReset, colorReset,
-						out,
-					)
-				} else {
-					fmt.Printf("%s%s%s  [%s%s%s%s]\n",
-						colorBold+colorCyan, displayHost, colorReset,
-						statusColor, statusLabel+statusExtra, colorReset, colorReset,
-					)
-				}
-			} else if monitorMode {
-				if cpu, mem, disk, ok := parseMetrics(r.output); ok {
-					fmt.Printf("%s%s%s: cpu:%s%d%%%s mem:%s%d%%%s disk:%s%d%%%s\n",
-						colorBold+colorCyan, displayHost, colorReset,
+			var out string
+			if monitorMode && r.returnCode == 0 && !r.timedOut {
+				lines := strings.SplitN(r.output, "\n", 2)
+				if cpu, mem, disk, ok := parseMetrics(lines[0]); ok {
+					out = fmt.Sprintf("cpu:%s%d%%%s mem:%s%d%%%s disk:%s%d%%%s",
 						usageColor(cpu), cpu, colorReset,
 						usageColor(mem), mem, colorReset,
 						usageColor(disk), disk, colorReset,
 					)
 				}
+				if len(lines) > 1 {
+					if cmdOut := strings.ReplaceAll(strings.TrimSpace(lines[1]), "\n", " | "); cmdOut != "" {
+						if out != "" {
+							out += "  " + cmdOut
+						} else {
+							out = cmdOut
+						}
+					}
+				}
 			} else {
-				fmt.Printf("%s%s%s: %s\n",
+				out = strings.ReplaceAll(strings.TrimSpace(r.output), "\n", " | ")
+			}
+			if out != "" {
+				fmt.Printf("%s%s%s  [%s%s%s%s]: %s\n",
 					colorBold+colorCyan, displayHost, colorReset,
-					strings.ReplaceAll(r.output, "\n", " | "),
+					statusColor, statusLabel+statusExtra, colorReset, colorReset,
+					out,
+				)
+			} else {
+				fmt.Printf("%s%s%s  [%s%s%s%s]\n",
+					colorBold+colorCyan, displayHost, colorReset,
+					statusColor, statusLabel+statusExtra, colorReset, colorReset,
 				)
 			}
 		} else {
@@ -367,7 +372,8 @@ func printResults(allResults []Result, zoneDomain string, shortOutput, monitorMo
 				colorYellow, statusColor, statusLabel+statusExtra, colorReset, colorReset,
 			)
 			if monitorMode && r.returnCode == 0 && !r.timedOut {
-				if cpu, mem, disk, ok := parseMetrics(r.output); ok {
+				lines := strings.SplitN(r.output, "\n", 2)
+				if cpu, mem, disk, ok := parseMetrics(lines[0]); ok {
 					const barW = 15
 					fmt.Printf("  CPU   %s%s%s %s%3d%%%s\n",
 						usageColor(cpu), usageBar(cpu, barW), colorReset, usageColor(cpu), cpu, colorReset)
@@ -375,6 +381,11 @@ func printResults(allResults []Result, zoneDomain string, shortOutput, monitorMo
 						usageColor(mem), usageBar(mem, barW), colorReset, usageColor(mem), mem, colorReset)
 					fmt.Printf("  DISK  %s%s%s %s%3d%%%s\n",
 						usageColor(disk), usageBar(disk, barW), colorReset, usageColor(disk), disk, colorReset)
+				}
+				if len(lines) > 1 {
+					for _, line := range strings.Split(strings.TrimRight(lines[1], "\n"), "\n") {
+						fmt.Printf("  %s\n", line)
+					}
 				}
 			} else if r.output != "" {
 				for _, line := range strings.Split(r.output, "\n") {
@@ -394,8 +405,8 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, mon
 
 	n := 0
 	if monitorMode {
-		fmt.Printf("\r\033[K  %-*s  %-9s  %-9s  %-14s  %-14s  %-14s\n",
-			hostWidth, "HOST", "STATUS", "TIME", "CPU", "MEM", "DISK /")
+		fmt.Printf("\r\033[K  %-*s  %-9s  %-9s  %-14s  %-14s  %-14s  %s\n",
+			hostWidth, "HOST", "STATUS", "TIME", "CPU", "MEM", "DISK /", "OUTPUT")
 	} else {
 		fmt.Printf("\r\033[K  %-*s  %-9s  %-9s  %s\n", hostWidth, "HOST", "STATUS", "TIME", "RESULT")
 	}
@@ -436,11 +447,16 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, mon
 				diskCol = fmt.Sprintf("%s%s%s %s%3d%%%s",
 					usageColor(e.disk), usageBar(e.disk, 8), colorReset, usageColor(e.disk), e.disk, colorReset)
 			}
-			fmt.Printf("\r\033[K  %s%-*s%s  %s%s%s  %-9s  %-14s  %-14s  %-14s\n",
+			output := e.result
+			if len(output) > 40 {
+				output = output[:37] + "..."
+			}
+			fmt.Printf("\r\033[K  %s%-*s%s  %s%s%s  %-9s  %-14s  %-14s  %-14s  %s\n",
 				colorBold+colorCyan, hostWidth, e.name, colorReset,
 				statusColor, statusText, colorReset,
 				timeStr,
 				cpuCol, memCol, diskCol,
+				output,
 			)
 		} else {
 			result := e.result
@@ -530,7 +546,11 @@ func main() {
 	var command, remotePath string
 	switch {
 	case monitorMode:
-		command = monitorCmd
+		if flag.NArg() > 0 {
+			command = monitorCmd + "; " + strings.Join(flag.Args(), " ")
+		} else {
+			command = monitorCmd
+		}
 	case uploadVal != "":
 		if flag.NArg() == 0 {
 			fmt.Fprintln(os.Stderr, "Error: --upload requires a remote destination path as argument")
@@ -779,11 +799,15 @@ func main() {
 			} else if r.returnCode != 0 {
 				entries[idx].result = r.failReason
 			} else if monitorMode {
-				if cpu, mem, disk, ok := parseMetrics(r.output); ok {
+				lines := strings.SplitN(r.output, "\n", 2)
+				if cpu, mem, disk, ok := parseMetrics(lines[0]); ok {
 					entries[idx].cpu = cpu
 					entries[idx].mem = mem
 					entries[idx].disk = disk
 					entries[idx].hasMetrics = true
+				}
+				if len(lines) > 1 {
+					entries[idx].result = strings.SplitN(strings.TrimSpace(lines[1]), "\n", 2)[0]
 				}
 			} else {
 				entries[idx].result = strings.SplitN(r.output, "\n", 2)[0]
@@ -796,7 +820,6 @@ func main() {
 		mu.Lock()
 		renderDashboard(entries, hostWidth, tick, linesPrinted, monitorMode)
 		mu.Unlock()
-		printResults(allResults, zoneDomain, shortOutput, monitorMode, timeoutSec)
 	} else {
 		for r := range results {
 			allResults = append(allResults, r)
