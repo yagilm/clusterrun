@@ -367,27 +367,32 @@ func printResults(allResults []Result, zoneDomain string, shortOutput, monitorMo
 				)
 			}
 		} else {
-			fmt.Printf("%s%s%s%s  [%s%s%s%s]\n",
-				colorBold+colorCyan, displayHost, colorReset,
-				colorYellow, statusColor, statusLabel+statusExtra, colorReset, colorReset,
-			)
 			if monitorMode && r.returnCode == 0 && !r.timedOut {
 				lines := strings.SplitN(r.output, "\n", 2)
 				if cpu, mem, disk, ok := parseMetrics(lines[0]); ok {
-					const barW = 15
-					fmt.Printf("  CPU   %s%s%s %s%3d%%%s\n",
-						usageColor(cpu), usageBar(cpu, barW), colorReset, usageColor(cpu), cpu, colorReset)
-					fmt.Printf("  MEM   %s%s%s %s%3d%%%s\n",
-						usageColor(mem), usageBar(mem, barW), colorReset, usageColor(mem), mem, colorReset)
-					fmt.Printf("  DISK  %s%s%s %s%3d%%%s\n",
+					const barW = 10
+					fmt.Printf("%s%s%s%s  [%s%s%s%s]  CPU %s%s%s %s%3d%%%s  MEM %s%s%s %s%3d%%%s  DISK %s%s%s %s%3d%%%s\n",
+						colorBold+colorCyan, displayHost, colorReset,
+						colorYellow, statusColor, statusLabel+statusExtra, colorReset, colorReset,
+						usageColor(cpu), usageBar(cpu, barW), colorReset, usageColor(cpu), cpu, colorReset,
+						usageColor(mem), usageBar(mem, barW), colorReset, usageColor(mem), mem, colorReset,
 						usageColor(disk), usageBar(disk, barW), colorReset, usageColor(disk), disk, colorReset)
+				} else {
+					fmt.Printf("%s%s%s%s  [%s%s%s%s]\n",
+						colorBold+colorCyan, displayHost, colorReset,
+						colorYellow, statusColor, statusLabel+statusExtra, colorReset, colorReset,
+					)
 				}
 				if len(lines) > 1 {
 					for _, line := range strings.Split(strings.TrimRight(lines[1], "\n"), "\n") {
 						fmt.Printf("  %s\n", line)
 					}
 				}
-			} else if r.output != "" {
+			} else {
+				fmt.Printf("%s%s%s%s  [%s%s%s%s]\n",
+					colorBold+colorCyan, displayHost, colorReset,
+					colorYellow, statusColor, statusLabel+statusExtra, colorReset, colorReset,
+				)
 				for _, line := range strings.Split(r.output, "\n") {
 					fmt.Printf("  %s\n", line)
 				}
@@ -694,8 +699,6 @@ func main() {
 			fmt.Printf("Upload: %s → <host>:%s\n", uploadVal, remotePath)
 		case downloadVal != "":
 			fmt.Printf("Download: <host>:%s → %s/<shortname>_%s\n", downloadVal, dlDir, pathBase(downloadVal))
-		default:
-			fmt.Printf("Command: %s\n", command)
 		}
 		fmt.Printf("Matched %d server(s):\n", len(hosts))
 		for _, host := range hosts {
