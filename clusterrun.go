@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,56 @@ const (
 	colorRed    = "\033[31m"
 	colorYellow = "\033[33m"
 )
+
+// monitorCmd is run on each host when --monitor is used.
+// It outputs three space-separated integers: cpu% mem% disk%
+const monitorCmd = `_r1=$(awk 'NR==1{s=0;for(i=2;i<=NF;i++)s+=$i;print s,$5}' /proc/stat);` +
+	`sleep 0.2;` +
+	`_r2=$(awk 'NR==1{s=0;for(i=2;i<=NF;i++)s+=$i;print s,$5}' /proc/stat);` +
+	`cpu=$(awk -v a="$_r1" -v b="$_r2" 'BEGIN{split(a,x);split(b,y);d=y[1]-x[1];print(d>0)?int(100*(1-(y[2]-x[2])/d)):0}');` +
+	`mem=$(awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{print int((t-a)*100/t)}' /proc/meminfo);` +
+	`disk=$(df / | awk 'NR==2{sub(/%/,"",$5);print $5}');` +
+	`echo "$cpu $mem $disk"`
+
+func usageColor(pct int) string {
+	if pct >= 80 {
+		return colorRed
+	}
+	if pct >= 60 {
+		return colorYellow
+	}
+	return colorGreen
+}
+
+func usageBar(pct, width int) string {
+	if pct < 0 {
+		pct = 0
+	}
+	if pct > 100 {
+		pct = 100
+	}
+	filled := pct * width / 100
+	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+}
+
+func parseMetrics(output string) (cpu, mem, disk int, ok bool) {
+	parts := strings.Fields(output)
+	if len(parts) != 3 {
+		return
+	}
+	var err error
+	if cpu, err = strconv.Atoi(parts[0]); err != nil {
+		return
+	}
+	if mem, err = strconv.Atoi(parts[1]); err != nil {
+		return
+	}
+	if disk, err = strconv.Atoi(parts[2]); err != nil {
+		return
+	}
+	ok = true
+	return
+}
 
 type Result struct {
 	host       string
@@ -244,16 +295,20 @@ func parseZoneFile(path string) ([]string, string, error) {
 }
 
 type dashEntry struct {
-	name    string
-	start   time.Time
-	done    bool
-	ok      bool
-	timeout bool
-	elapsed time.Duration
-	result  string
+	name       string
+	start      time.Time
+	done       bool
+	ok         bool
+	timeout    bool
+	elapsed    time.Duration
+	result     string
+	cpu        int
+	mem        int
+	disk       int
+	hasMetrics bool
 }
 
-func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int) int {
+func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, monitorMode bool) int {
 	spinners := []string{"|", "/", "-", "\\"}
 
 	if linesPrinted > 0 {
@@ -261,8 +316,13 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int) int
 	}
 
 	n := 0
-	fmt.Printf("\r\033[K  %-*s  %-9s  %-9s  %s\n", hostWidth, "HOST", "STATUS", "TIME", "RESULT")
-	fmt.Printf("\r\033[K  %s\n", strings.Repeat("─", hostWidth+45))
+	if monitorMode {
+		fmt.Printf("\r\033[K  %-*s  %-9s  %-9s  %-14s  %-14s  %-14s\n",
+			hostWidth, "HOST", "STATUS", "TIME", "CPU", "MEM", "DISK /")
+	} else {
+		fmt.Printf("\r\033[K  %-*s  %-9s  %-9s  %s\n", hostWidth, "HOST", "STATUS", "TIME", "RESULT")
+	}
+	fmt.Printf("\r\033[K  %s\n", strings.Repeat("─", hostWidth+65))
 	n += 2
 
 	for _, e := range entries {
@@ -289,17 +349,34 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int) int
 			statusColor = colorRed
 		}
 
-		result := e.result
-		if len(result) > 40 {
-			result = result[:37] + "..."
+		if monitorMode {
+			var cpuCol, memCol, diskCol string
+			if e.done && e.hasMetrics {
+				cpuCol = fmt.Sprintf("%s%s%s %s%3d%%%s",
+					usageColor(e.cpu), usageBar(e.cpu, 8), colorReset, usageColor(e.cpu), e.cpu, colorReset)
+				memCol = fmt.Sprintf("%s%s%s %s%3d%%%s",
+					usageColor(e.mem), usageBar(e.mem, 8), colorReset, usageColor(e.mem), e.mem, colorReset)
+				diskCol = fmt.Sprintf("%s%s%s %s%3d%%%s",
+					usageColor(e.disk), usageBar(e.disk, 8), colorReset, usageColor(e.disk), e.disk, colorReset)
+			}
+			fmt.Printf("\r\033[K  %s%-*s%s  %s%s%s  %-9s  %-14s  %-14s  %-14s\n",
+				colorBold+colorCyan, hostWidth, e.name, colorReset,
+				statusColor, statusText, colorReset,
+				timeStr,
+				cpuCol, memCol, diskCol,
+			)
+		} else {
+			result := e.result
+			if len(result) > 40 {
+				result = result[:37] + "..."
+			}
+			fmt.Printf("\r\033[K  %s%-*s%s  %s%s%s  %-9s  %s\n",
+				colorBold+colorCyan, hostWidth, e.name, colorReset,
+				statusColor, statusText, colorReset,
+				timeStr,
+				result,
+			)
 		}
-
-		fmt.Printf("\r\033[K  %s%-*s%s  %s%s%s  %-9s  %s\n",
-			colorBold+colorCyan, hostWidth, e.name, colorReset,
-			statusColor, statusText, colorReset,
-			timeStr,
-			result,
-		)
 		n++
 	}
 
@@ -308,7 +385,7 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int) int
 
 func main() {
 	var hostsVal, hostsFileVal, zoneFileVal, filterVal, zoneDomain string
-	var dryRun, strictHostKey, shortOutput, dashboardMode bool
+	var dryRun, strictHostKey, shortOutput, dashboardMode, monitorMode bool
 	var timeoutSec int
 	var uploadVal, downloadVal, destVal string
 	flag.StringVar(&hostsVal, "H", "", "")
@@ -329,6 +406,8 @@ func main() {
 	flag.StringVar(&destVal, "dest", ".", "")
 	flag.BoolVar(&dashboardMode, "D", false, "")
 	flag.BoolVar(&dashboardMode, "dashboard", false, "")
+	flag.BoolVar(&monitorMode, "m", false, "")
+	flag.BoolVar(&monitorMode, "monitor", false, "")
 
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: clusterrun [options] <command>")
@@ -346,6 +425,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "      --strict-host-key           Reject unknown host keys instead of accepting them automatically")
 		fmt.Fprintln(os.Stderr, "  -s, --short                     Compact output: single line per host")
 		fmt.Fprintln(os.Stderr, "  -D, --dashboard                 Live dashboard table during execution")
+		fmt.Fprintln(os.Stderr, "  -m, --monitor                   Collect CPU, memory and disk (/) usage snapshot")
 		fmt.Fprintln(os.Stderr, "      --upload <local_file>        Upload file to all hosts; remote path given as argument")
 		fmt.Fprintln(os.Stderr, "      --download <remote_file>     Download file from all hosts; saved as <shortname>_<file>")
 		fmt.Fprintln(os.Stderr, "      --dest <dir>                 Destination directory for --download (default: .)")
@@ -365,13 +445,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	if flag.NArg() == 0 && uploadVal == "" && downloadVal == "" {
+	if flag.NArg() == 0 && uploadVal == "" && downloadVal == "" && !monitorMode {
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	var command, remotePath string
 	switch {
+	case monitorMode:
+		command = monitorCmd
 	case uploadVal != "":
 		if flag.NArg() == 0 {
 			fmt.Fprintln(os.Stderr, "Error: --upload requires a remote destination path as argument")
@@ -589,7 +671,7 @@ func main() {
 
 		var mu sync.Mutex
 		tick := 0
-		linesPrinted := renderDashboard(entries, hostWidth, tick, 0)
+		linesPrinted := renderDashboard(entries, hostWidth, tick, 0, monitorMode)
 
 		ticker := time.NewTicker(100 * time.Millisecond)
 		tickerDone := make(chan struct{})
@@ -599,7 +681,7 @@ func main() {
 				case <-ticker.C:
 					tick++
 					mu.Lock()
-					linesPrinted = renderDashboard(entries, hostWidth, tick, linesPrinted)
+					linesPrinted = renderDashboard(entries, hostWidth, tick, linesPrinted, monitorMode)
 					mu.Unlock()
 				case <-tickerDone:
 					return
@@ -619,6 +701,13 @@ func main() {
 				entries[idx].result = "timed out"
 			} else if r.returnCode != 0 {
 				entries[idx].result = r.failReason
+			} else if monitorMode {
+				if cpu, mem, disk, ok := parseMetrics(r.output); ok {
+					entries[idx].cpu = cpu
+					entries[idx].mem = mem
+					entries[idx].disk = disk
+					entries[idx].hasMetrics = true
+				}
 			} else {
 				entries[idx].result = strings.SplitN(r.output, "\n", 2)[0]
 			}
@@ -628,7 +717,7 @@ func main() {
 		ticker.Stop()
 		close(tickerDone)
 		mu.Lock()
-		renderDashboard(entries, hostWidth, tick, linesPrinted)
+		renderDashboard(entries, hostWidth, tick, linesPrinted, monitorMode)
 		mu.Unlock()
 	} else {
 		for r := range results {
@@ -665,6 +754,15 @@ func main() {
 						colorBold+colorCyan, displayHost, colorReset,
 						statusColor, statusLabel+statusExtra, colorReset, colorReset,
 					)
+				} else if monitorMode {
+					if cpu, mem, disk, ok := parseMetrics(r.output); ok {
+						fmt.Printf("%s%s%s: cpu:%s%d%%%s mem:%s%d%%%s disk:%s%d%%%s\n",
+							colorBold+colorCyan, displayHost, colorReset,
+							usageColor(cpu), cpu, colorReset,
+							usageColor(mem), mem, colorReset,
+							usageColor(disk), disk, colorReset,
+						)
+					}
 				} else {
 					fmt.Printf("%s%s%s: %s\n",
 						colorBold+colorCyan, displayHost, colorReset,
@@ -676,7 +774,17 @@ func main() {
 					colorBold+colorCyan, displayHost, colorReset,
 					colorYellow, statusColor, statusLabel+statusExtra, colorReset, colorReset,
 				)
-				if r.output != "" {
+				if monitorMode && r.returnCode == 0 && !r.timedOut {
+					if cpu, mem, disk, ok := parseMetrics(r.output); ok {
+						const barW = 15
+						fmt.Printf("  CPU   %s%s%s %s%3d%%%s\n",
+							usageColor(cpu), usageBar(cpu, barW), colorReset, usageColor(cpu), cpu, colorReset)
+						fmt.Printf("  MEM   %s%s%s %s%3d%%%s\n",
+							usageColor(mem), usageBar(mem, barW), colorReset, usageColor(mem), mem, colorReset)
+						fmt.Printf("  DISK  %s%s%s %s%3d%%%s\n",
+							usageColor(disk), usageBar(disk, barW), colorReset, usageColor(disk), disk, colorReset)
+					}
+				} else if r.output != "" {
 					for _, line := range strings.Split(r.output, "\n") {
 						fmt.Printf("  %s\n", line)
 					}
