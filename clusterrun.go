@@ -480,6 +480,12 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, mon
 				result,
 			)
 			n++
+			if _, extraLines, ok := strings.Cut(e.cmdOutput, "\n"); ok {
+				for _, line := range strings.Split(extraLines, "\n") {
+					fmt.Printf("\r\033[K    %s\n", line)
+					n++
+				}
+			}
 		}
 	}
 
@@ -819,6 +825,7 @@ func main() {
 				}
 			} else {
 				entries[idx].result = strings.SplitN(r.output, "\n", 2)[0]
+				entries[idx].cmdOutput = strings.TrimRight(r.output, "\n")
 			}
 			mu.Unlock()
 		}
