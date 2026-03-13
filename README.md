@@ -1,4 +1,4 @@
-# ssh_parallel
+# clusterrun
 
 > **Note:** This tool was built entirely as a test of [Claude Code](https://claude.ai/claude-code) capabilities — from initial implementation through iterative feature additions, all code was written by Claude Code with minimal human intervention.
 
@@ -32,9 +32,9 @@ Requires Go and `ssh`/`scp` available in `$PATH`.
 ## Usage
 
 ```
-ssh_parallel [options] <command>
-ssh_parallel [options] --upload <local_file> <remote_path>
-ssh_parallel [options] --download <remote_file>
+clusterrun [options] <command>
+clusterrun [options] --upload <local_file> <remote_path>
+clusterrun [options] --download <remote_file>
 ```
 
 ---
@@ -129,25 +129,25 @@ A live table that updates every 100 ms with an animated spinner, elapsed time pe
 
 ```bash
 # Run uptime on three hosts
-ssh_parallel -H web1,web2,web3 uptime
+clusterrun -H web1,web2,web3 uptime
 
 # Run a command on all hosts in a file
-ssh_parallel -f hosts.txt 'df -h'
+clusterrun -f hosts.txt 'df -h'
 
 # Use a zone file and filter to web servers, with live dashboard
-ssh_parallel -z example.com.zone -F 'web.*' -D uptime
+clusterrun -z example.com.zone -F 'web.*' -D uptime
 
 # Dry-run to preview what would execute
-ssh_parallel -z example.com.zone -F 'web.*' --dry-run nginx -t
+clusterrun -z example.com.zone -F 'web.*' --dry-run nginx -t
 
 # Upload a config file to all web servers
-ssh_parallel -z example.com.zone -F 'web.*' --upload ./nginx.conf /etc/nginx/nginx.conf
+clusterrun -z example.com.zone -F 'web.*' --upload ./nginx.conf /etc/nginx/nginx.conf
 
 # Download logs from all hosts into ./download_app.log/
-ssh_parallel -z example.com.zone --download /var/log/app.log
+clusterrun -z example.com.zone --download /var/log/app.log
 
 # Download logs into a specific directory
-ssh_parallel -z example.com.zone --download /var/log/app.log --dest /tmp/logs
+clusterrun -z example.com.zone --download /var/log/app.log --dest /tmp/logs
 ```
 
 ---

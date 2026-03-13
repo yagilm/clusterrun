@@ -331,7 +331,7 @@ func main() {
 	flag.BoolVar(&dashboardMode, "dashboard", false, "")
 
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: ssh_parallel [options] <command>")
+		fmt.Fprintln(os.Stderr, "Usage: clusterrun [options] <command>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Run a command in parallel over multiple SSH hosts.")
 		fmt.Fprintln(os.Stderr, "")
@@ -351,11 +351,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "      --dest <dir>                 Destination directory for --download (default: .)")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
-		fmt.Fprintln(os.Stderr, "  ssh_parallel -H web1,web2,web3 uptime")
-		fmt.Fprintln(os.Stderr, "  ssh_parallel --hosts-file hosts.txt 'df -h'")
-		fmt.Fprintln(os.Stderr, "  ssh_parallel -z example.com.zone -F 'web.*' nginx -t")
-		fmt.Fprintln(os.Stderr, "  ssh_parallel -z example.com.zone --upload ./app.conf /etc/app/app.conf")
-		fmt.Fprintln(os.Stderr, "  ssh_parallel -z example.com.zone --download /var/log/app.log --dest ./logs/")
+		fmt.Fprintln(os.Stderr, "  clusterrun -H web1,web2,web3 uptime")
+		fmt.Fprintln(os.Stderr, "  clusterrun --hosts-file hosts.txt 'df -h'")
+		fmt.Fprintln(os.Stderr, "  clusterrun -z example.com.zone -F 'web.*' nginx -t")
+		fmt.Fprintln(os.Stderr, "  clusterrun -z example.com.zone --upload ./app.conf /etc/app/app.conf")
+		fmt.Fprintln(os.Stderr, "  clusterrun -z example.com.zone --download /var/log/app.log --dest ./logs/")
 	}
 
 	flag.Parse()
