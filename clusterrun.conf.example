@@ -1,0 +1,23 @@
+# clusterrun configuration file
+#
+# Copy this file to:
+#   ./clusterrun.conf      — applies only in the current directory
+#   ~/.clusterrun          — applies for all invocations by this user
+#
+# Command-line flags always override values set here.
+# Uncomment and edit the lines you want to use.
+
+# Host selection (pick one or combine)
+#hosts = web1,web2,web3
+#hosts-file = /etc/clusterrun/hosts.txt
+#zone-file = /etc/clusterrun/example.com.zone
+
+# Per-host timeout in seconds (default: 30)
+#timeout = 30
+
+# Output mode (set at most one to true)
+#short = true
+#dashboard = true
+
+# Collect CPU / memory / disk metrics
+#monitor = true

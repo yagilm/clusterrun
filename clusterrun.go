@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -494,6 +495,45 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, mon
 	return n
 }
 
+// findConfigFile returns the path to the first config file found, or "".
+// It checks ./clusterrun.conf first, then ~/.clusterrun.
+func findConfigFile() string {
+	if _, err := os.Stat("clusterrun.conf"); err == nil {
+		if abs, err := filepath.Abs("clusterrun.conf"); err == nil {
+			return abs
+		}
+		return "clusterrun.conf"
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		p := filepath.Join(home, ".clusterrun")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// parseConfigFile reads a simple key = value config file, ignoring blank lines and # comments.
+func parseConfigFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		cfg[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	}
+	return cfg, nil
+}
+
 func main() {
 	var hostsVal, hostsFileVal, zoneFileVal, filterVal, zoneDomain string
 	var dryRun, strictHostKey, shortOutput, dashboardMode, monitorMode, showVersion bool
@@ -556,6 +596,45 @@ func main() {
 	if showVersion {
 		fmt.Println("clusterrun", version)
 		os.Exit(0)
+	}
+
+	// Load config file and apply values for flags not set on the command line.
+	if cfgPath := findConfigFile(); cfgPath != "" {
+		cfgVals, err := parseConfigFile(cfgPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not read config file %s: %v\n", cfgPath, err)
+		} else {
+			set := make(map[string]bool)
+			flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
+
+			parseBool := func(v string) bool {
+				return v == "true" || v == "1" || v == "yes"
+			}
+			if v, ok := cfgVals["hosts"]; ok && !set["H"] && !set["hosts"] {
+				hostsVal = v
+			}
+			if v, ok := cfgVals["hosts-file"]; ok && !set["f"] && !set["hosts-file"] {
+				hostsFileVal = v
+			}
+			if v, ok := cfgVals["zone-file"]; ok && !set["z"] && !set["zone-file"] {
+				zoneFileVal = v
+			}
+			if v, ok := cfgVals["timeout"]; ok && !set["timeout"] {
+				if n, err := strconv.Atoi(v); err == nil {
+					timeoutSec = n
+				}
+			}
+			if v, ok := cfgVals["short"]; ok && !set["s"] && !set["short"] {
+				shortOutput = parseBool(v)
+			}
+			if v, ok := cfgVals["dashboard"]; ok && !set["D"] && !set["dashboard"] {
+				dashboardMode = parseBool(v)
+			}
+			if v, ok := cfgVals["monitor"]; ok && !set["m"] && !set["monitor"] {
+				monitorMode = parseBool(v)
+			}
+			fmt.Println("Using config file", cfgPath)
+		}
 	}
 
 	if uploadVal != "" && downloadVal != "" {
