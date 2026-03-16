@@ -21,6 +21,29 @@ A command-line tool for running SSH commands and transferring files across multi
 
 ## Installation
 
+### Download a pre-built binary (recommended)
+
+Go to the [Releases page](https://github.com/yagilm/cluster_run/releases) and download the binary for your system.
+
+**wget directly to `$PATH`** (Linux amd64 example — adjust version and arch as needed):
+
+```bash
+sudo wget -O /usr/local/bin/clusterrun \
+  https://github.com/yagilm/cluster_run/releases/latest/download/clusterrun-v1.0.0-linux-amd64
+sudo chmod +x /usr/local/bin/clusterrun
+```
+
+Available variants: `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`.
+
+If you prefer to download manually, rename the file to `clusterrun`, make it executable, and move it to a directory in your `$PATH`:
+
+```bash
+chmod +x clusterrun-*-linux-amd64
+mv clusterrun-*-linux-amd64 /usr/local/bin/clusterrun
+```
+
+### Build from source
+
 ```bash
 make
 ```
