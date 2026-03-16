@@ -793,15 +793,22 @@ func main() {
 
 	// When regex filter was used, show plan and require confirmation.
 	if usingRegex {
-		switch {
-		case uploadVal != "":
-			fmt.Printf("Upload: %s → <host>:%s\n", uploadVal, remotePath)
-		case downloadVal != "":
-			fmt.Printf("Download: <host>:%s → %s/<shortname>_%s\n", downloadVal, dlDir, pathBase(downloadVal))
-		}
 		fmt.Printf("Matched %d server(s):\n", len(hosts))
 		for _, host := range hosts {
 			fmt.Printf("  %s\n", host)
+		}
+		switch {
+		case uploadVal != "":
+			fmt.Printf("\nWill upload `%s` to `%s` on all matched servers.\n", uploadVal, remotePath)
+		case downloadVal != "":
+			fmt.Printf("\nWill download `%s` from all matched servers.\n", downloadVal)
+		default:
+			userCmd := strings.Join(flag.Args(), " ")
+			if userCmd != "" {
+				fmt.Printf("\nWill run `%s` on all matched servers.\n", userCmd)
+			} else {
+				fmt.Println("\nWill collect metrics on all matched servers.")
+			}
 		}
 		fmt.Print("\nProceed? [Y/n] ")
 		var answer string
