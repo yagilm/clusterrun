@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+var version = "dev"
+
 const (
 	colorReset  = "\033[0m"
 	colorBold   = "\033[1m"
@@ -494,9 +496,10 @@ func renderDashboard(entries []dashEntry, hostWidth, tick, linesPrinted int, mon
 
 func main() {
 	var hostsVal, hostsFileVal, zoneFileVal, filterVal, zoneDomain string
-	var dryRun, strictHostKey, shortOutput, dashboardMode, monitorMode bool
+	var dryRun, strictHostKey, shortOutput, dashboardMode, monitorMode, showVersion bool
 	var timeoutSec int
 	var uploadVal, downloadVal, destVal string
+	flag.BoolVar(&showVersion, "version", false, "")
 	flag.StringVar(&hostsVal, "H", "", "")
 	flag.StringVar(&hostsVal, "hosts", "", "")
 	flag.StringVar(&hostsFileVal, "f", "", "")
@@ -538,6 +541,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "      --upload <local_file>        Upload file to all hosts; remote path given as argument")
 		fmt.Fprintln(os.Stderr, "      --download <remote_file>     Download file from all hosts; saved as <shortname>_<file>")
 		fmt.Fprintln(os.Stderr, "      --dest <dir>                 Destination directory for --download (default: .)")
+		fmt.Fprintln(os.Stderr, "      --version                    Print version and exit")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
 		fmt.Fprintln(os.Stderr, "  clusterrun -H web1,web2,web3 uptime")
@@ -548,6 +552,11 @@ func main() {
 	}
 
 	flag.Parse()
+
+	if showVersion {
+		fmt.Println("clusterrun", version)
+		os.Exit(0)
+	}
 
 	if uploadVal != "" && downloadVal != "" {
 		fmt.Fprintln(os.Stderr, "Error: --upload and --download are mutually exclusive")
